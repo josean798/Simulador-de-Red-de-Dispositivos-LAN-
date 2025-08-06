@@ -48,6 +48,7 @@ class CLI:
                 'add_device': self._add_device,
                 'remove_device': self._remove_device,
                 'add_interface': self._add_interface,
+                'console': self._console_device,
             },
             Mode.CONFIG: {
                 'hostname': self._set_hostname,
@@ -506,6 +507,32 @@ class CLI:
         iface = Interface(iface_name)
         device.add_interface(iface)
         print(f"Interfaz {iface_name} añadida a {dev_name}")
+        print(self.get_prompt(), end='')
+
+    def _console_device(self, args):
+        if not args:
+            print("Dispositivos disponibles:")
+            for device in self.network.list_devices():
+                print(f"- {device.name} ({device.device_type})")
+            return
+        """Cambia al contexto de otro dispositivo"""
+        if len(args) != 1:
+            print("Uso: console <nombre_dispositivo>")
+            return
+        
+        device_name = args[0]
+        device = self.network.get_device(device_name)
+        
+        if not device:
+            print(f"% Dispositivo {device_name} no encontrado")
+            return
+        # Guardar el modo actual antes de cambiar
+        current_mode = self.current_device.mode
+        # Cambiar al nuevo dispositivo
+        self.current_device = device
+        # Restaurar el modo en el nuevo dispositivo
+        self.current_device.mode = current_mode
+        print(f"Cambiado al dispositivo {device_name}")
         print(self.get_prompt(), end='')
 
 
