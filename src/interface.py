@@ -17,10 +17,18 @@ class Interface:
         self.packet_queue = Queue()  # Cola de paquetes para la interfaz
 
     def set_ip(self, ip):
-        """
-        Asigna una dirección IP a la interfaz.
-        """
-        self.ip_address = ip
+        """Asigna una dirección IP a la interfaz"""
+        if self._validate_ip(ip):
+            self.ip_address = ip
+            return True
+        return False
+
+    def _validate_ip(self, ip):
+        """Valida formato básico de dirección IP"""
+        parts = ip.split('.')
+        if len(parts) != 4:
+            return False
+        return all(part.isdigit() and 0 <= int(part) <= 255 for part in parts)
 
     def shutdown(self):
         """

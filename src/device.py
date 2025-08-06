@@ -17,6 +17,7 @@ class Device:
         self.status = 'up'    # 'up' (online) o 'down' (offline)
         self.packet_queue = Queue()  # Cola de paquetes entrantes/salientes
         self.history_stack = Stack()  # Pila de historial de recepción
+        self.mode = Mode.USER  
 
     def add_interface(self, interface):
         """

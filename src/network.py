@@ -19,6 +19,7 @@ class Network:
         - device_activity: diccionario con la cantidad de paquetes procesados por cada dispositivo.
         """
         self.devices = LinkedList()  # LinkedList de objetos Device
+        self.connections = []
         self.total_packets_sent = 0
         self.total_packets_delivered = 0
         self.total_packets_dropped = 0
