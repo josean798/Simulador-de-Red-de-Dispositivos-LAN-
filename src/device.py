@@ -1,3 +1,4 @@
+from Mode import Mode
 from LinkedList import LinkedList
 from Queue import Queue
 from Stack import Stack
