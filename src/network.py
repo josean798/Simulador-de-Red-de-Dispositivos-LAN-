@@ -1,4 +1,6 @@
+
 from LinkedList import LinkedList
+from Packet import Packet
 
 class Network:
     """
@@ -100,7 +102,6 @@ class Network:
         Crea y encola un paquete en la interfaz correspondiente al source_ip.
         Retorna True si el paquete fue encolado, False si no se encontró la interfaz.
         """
-        from packet import Packet
         for device in self.devices:
             for iface in device.interfaces:
                 if iface.ip_address == source_ip:
