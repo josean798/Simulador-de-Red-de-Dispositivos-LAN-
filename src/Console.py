@@ -1,0 +1,486 @@
+import json
+from enum import Enum, auto
+from Network import Network
+from Device import Device
+from Interface import Interface
+from Packet import Packet
+
+class Mode(Enum):
+    """Enumeración de modos de operación del CLI"""
+    USER = auto()
+    PRIVILEGED = auto()
+    CONFIG = auto()
+    CONFIG_IF = auto()
+
+class CLI:
+    """Interfaz de línea de comandos mejorada para el simulador de red"""
+    
+    def __init__(self):
+        self.current_device = None
+        self.network = Network()
+        self.current_interface = None
+        self.init_commands()
+        self.load_default_config()
+    
+    def init_commands(self):
+        """Inicializa todos los comandos disponibles organizados por modo"""
+        self.commands = {
+            Mode.USER: {
+                'enable': self._enable,
+                'ping': self._ping,
+                'send': self._send_packet,
+                'show': self._show_user,
+                'help': self._show_help
+            },
+            Mode.PRIVILEGED: {
+                'disable': self._disable,
+                'configure': self._configure_terminal,
+                'show': self._show_privileged,
+                'connect': self._connect,
+                'disconnect': self._disconnect,
+                'list_devices': self._list_devices,
+                'set_device_status': self._set_device_status,
+                'save': self._save_config,
+                'load': self._load_config,
+                'tick': self._process_tick,
+                'process': self._process_tick,
+                'exit': self._exit_privileged,
+                'end': self._end_config,
+                'help': self._show_help
+            },
+            Mode.CONFIG: {
+                'hostname': self._set_hostname,
+                'interface': self._configure_interface,
+                'exit': self._exit_config,
+                'end': self._end_config,
+                'help': self._show_help
+            },
+            Mode.CONFIG_IF: {
+                'ip': self._set_ip_address,
+                'shutdown': self._shutdown_interface,
+                'no': self._no_shutdown,
+                'exit': self._exit_interface,
+                'end': self._end_config,
+                'help': self._show_help
+            }
+        }
+
+    def load_default_config(self):
+        """Carga una configuración inicial por defecto"""
+        self.network.add_device(Device("Router1", "router"))
+        self.network.add_device(Device("Switch1", "switch"))
+        self.network.add_device(Device("PC1", "host"))
+        
+        # Configurar interfaces básicas
+        router = self.network.get_device("Router1")
+        switch = self.network.get_device("Switch1")
+        pc = self.network.get_device("PC1")
+        
+        router.add_interface(Interface("g0/0"))
+        router.add_interface(Interface("g0/1"))
+        switch.add_interface(Interface("g0/1"))
+        pc.add_interface(Interface("eth0"))
+        
+        # Conectar dispositivos
+        self.network.connect("Router1", "g0/0", "Switch1", "g0/1")
+        self.network.connect("Router1", "g0/1", "PC1", "eth0")
+        
+        self.current_device = router
+
+    def parse_command(self, command):
+        """Procesa un comando ingresado por el usuario"""
+        if not command.strip():
+            print(self.get_prompt(), end='')
+            return
+
+        parts = command.strip().split()
+        cmd = parts[0].lower()
+        args = parts[1:]
+
+        # Manejo de comandos compuestos
+        if cmd == 'configure' and len(parts) > 1 and parts[1].lower() == 'terminal':
+            cmd = 'configure'
+        elif cmd == 'no' and len(parts) > 1 and parts[1].lower() == 'shutdown':
+            cmd = 'no'
+        elif cmd == 'show' and len(parts) > 1:
+            show_cmd = ' '.join(parts[:2]).lower()
+            if show_cmd in self.SHOW_COMMANDS:
+                cmd = 'show'
+                args = parts[1:]
+
+        if cmd in self.commands[self.current_device.mode]:
+            try:
+                self.commands[self.current_device.mode][cmd](args)
+            except Exception as e:
+                print(f"Error ejecutando comando: {e}")
+        else:
+            print(f"% Comando '{cmd}' no reconocido o no disponible en el modo actual")
+
+    def get_prompt(self):
+        """Genera el prompt según el modo actual"""
+        if self.current_device.mode == Mode.USER:
+            return f"{self.current_device.name}>"
+        elif self.current_device.mode == Mode.PRIVILEGED:
+            return f"{self.current_device.name}#"
+        elif self.current_device.mode == Mode.CONFIG:
+            return f"{self.current_device.name}(config)#"
+        elif self.current_device.mode == Mode.CONFIG_IF:
+            return f"{self.current_device.name}(config-if)#"
+        return ">"
+
+    # Implementación de comandos
+    def _enable(self, args):
+        """Cambia a modo privilegiado"""
+        if self.current_device.mode == Mode.USER:
+            self.current_device.mode = Mode.PRIVILEGED
+        print(self.get_prompt(), end='')
+
+    def _disable(self, args):
+        """Regresa a modo usuario"""
+        self.current_device.mode = Mode.USER
+        print(self.get_prompt(), end='')
+
+    def _configure_terminal(self, args):
+        """Entra en modo configuración global"""
+        if self.current_device.mode == Mode.PRIVILEGED:
+            self.current_device.mode = Mode.CONFIG
+        print(self.get_prompt(), end='')
+
+    def _exit_privileged(self, args):
+        """Sale del modo privilegiado"""
+        self._disable(args)
+
+    def _exit_config(self, args):
+        """Sale del modo configuración global"""
+        if self.current_device.mode == Mode.CONFIG:
+            self.current_device.mode = Mode.PRIVILEGED
+        print(self.get_prompt(), end='')
+
+    def _end_config(self, args):
+        """Termina configuración y regresa a modo privilegiado"""
+        self.current_device.mode = Mode.PRIVILEGED
+        print(self.get_prompt(), end='')
+
+    def _configure_interface(self, args):
+        """Entra en modo configuración de interfaz"""
+        if len(args) != 1:
+            print("Uso: interface <nombre_interfaz>")
+            return
+            
+        iface_name = args[0]
+        iface = next((i for i in self.current_device.get_interfaces() if i.name == iface_name), None)
+        
+        if iface:
+            self.current_interface = iface
+            self.current_device.mode = Mode.CONFIG_IF
+        else:
+            print(f"% La interfaz {iface_name} no existe")
+        print(self.get_prompt(), end='')
+
+    def _exit_interface(self, args):
+        """Sale del modo configuración de interfaz"""
+        self.current_device.mode = Mode.CONFIG
+        self.current_interface = None
+        print(self.get_prompt(), end='')
+
+    def _set_hostname(self, args):
+        """Configura el nombre del dispositivo"""
+        if len(args) != 1:
+            print("Uso: hostname <nuevo_nombre>")
+            return
+            
+        new_name = args[0]
+        if self.network.get_device(new_name):
+            print(f"% El nombre {new_name} ya está en uso")
+        else:
+            old_name = self.current_device.name
+            self.current_device.name = new_name
+            # Actualizar en la red
+            device = self.network.get_device(old_name)
+            if device:
+                device.name = new_name
+        print(self.get_prompt(), end='')
+
+    def _set_ip_address(self, args):
+        """Configura dirección IP de la interfaz actual"""
+        if len(args) < 2 or args[0] != 'address':
+            print("Uso: ip address <dirección_ip>")
+            return
+            
+        ip = args[1]
+        if self.current_interface:
+            if self._validate_ip(ip):
+                self.current_interface.set_ip(ip)
+                print(f"Interface {self.current_interface.name} configurada con IP {ip}")
+            else:
+                print("% Dirección IP inválida")
+        else:
+            print("% Ninguna interfaz seleccionada")
+        print(self.get_prompt(), end='')
+
+    def _validate_ip(self, ip):
+        """Valida formato básico de dirección IP"""
+        parts = ip.split('.')
+        if len(parts) != 4:
+            return False
+        return all(part.isdigit() and 0 <= int(part) <= 255 for part in parts)
+
+    def _shutdown_interface(self, args):
+        """Desactiva la interfaz actual"""
+        if self.current_interface:
+            self.current_interface.shutdown()
+            print(f"Interface {self.current_interface.name} desactivada")
+        print(self.get_prompt(), end='')
+
+    def _no_shutdown(self, args):
+        """Activa la interfaz actual"""
+        if self.current_interface:
+            self.current_interface.no_shutdown()
+            print(f"Interface {self.current_interface.name} activada")
+        print(self.get_prompt(), end='')
+
+    def _connect(self, args):
+        """Conecta dos interfaces de dispositivos"""
+        if len(args) != 3:
+            print("Uso: connect <interfaz_local> <dispositivo_remoto> <interfaz_remota>")
+            return
+            
+        iface1, dev2, iface2 = args
+        dev1 = self.current_device.name
+        
+        if self.network.connect(dev1, iface1, dev2, iface2):
+            print(f"Conexión establecida: {dev1}:{iface1} <-> {dev2}:{iface2}")
+        else:
+            print("% No se pudo establecer la conexión. Verifique los nombres.")
+        print(self.get_prompt(), end='')
+
+    def _disconnect(self, args):
+        """Desconecta dos interfaces"""
+        if len(args) != 3:
+            print("Uso: disconnect <interfaz_local> <dispositivo_remoto> <interfaz_remota>")
+            return
+            
+        iface1, dev2, iface2 = args
+        dev1 = self.current_device.name
+        
+        if self.network.disconnect(dev1, iface1, dev2, iface2):
+            print(f"Conexión eliminada: {dev1}:{iface1} <-> {dev2}:{iface2}")
+        else:
+            print("% No se pudo eliminar la conexión. Verifique los nombres.")
+        print(self.get_prompt(), end='')
+
+    def _set_device_status(self, args):
+        """Configura estado de un dispositivo (online/offline)"""
+        if len(args) != 2:
+            print("Uso: set_device_status <dispositivo> <online|offline>")
+            return
+            
+        dev, status = args
+        if status in ['online', 'offline']:
+            if self.network.set_device_status(dev, 'up' if status == 'online' else 'down'):
+                print(f"Estado de {dev} cambiado a {status}")
+            else:
+                print("% Dispositivo no encontrado")
+        else:
+            print("% Estado inválido. Use 'online' u 'offline'")
+        print(self.get_prompt(), end='')
+
+    def _list_devices(self, args):
+        """Lista todos los dispositivos en la red"""
+        print("Dispositivos en la red:")
+        for device in self.network.list_devices():
+            status = "online" if device.status == 'up' else "offline"
+            print(f"- {device.name} ({device.device_type}, {status})")
+        print(self.get_prompt(), end='')
+
+    def _show_user(self, args):
+        """Comandos show disponibles en modo usuario"""
+        if not args:
+            print("Comandos show disponibles en modo usuario:")
+            print("  show interfaces - Muestra interfaces del dispositivo")
+            return
+            
+        subcmd = args[0].lower()
+        if subcmd == 'interfaces':
+            self._show_interfaces(args[1:])
+        else:
+            print("% Comando show no reconocido")
+        print(self.get_prompt(), end='')
+
+    def _show_privileged(self, args):
+        """Comandos show disponibles en modo privilegiado"""
+        if not args:
+            print("Comandos show disponibles:")
+            print("  show history - Muestra historial de paquetes")
+            print("  show interfaces - Muestra interfaces del dispositivo")
+            print("  show queue - Muestra cola de paquetes pendientes")
+            print("  show statistics - Muestra estadísticas de red")
+            return
+            
+        subcmd = args[0].lower()
+        if subcmd == 'history':
+            self._show_history(args[1:])
+        elif subcmd == 'interfaces':
+            self._show_interfaces(args[1:])
+        elif subcmd == 'queue':
+            self._show_queue(args[1:])
+        elif subcmd == 'statistics':
+            self._show_statistics(args[1:])
+        else:
+            print("% Comando show no reconocido")
+        print(self.get_prompt(), end='')
+
+    def _show_history(self, args):
+        """Muestra historial de paquetes"""
+        print("Historial de paquetes:")
+        for i, packet in enumerate(self.current_device.get_history(), 1):
+            print(f"{i}) De {packet.source_ip} a {packet.destination_ip}: {packet.content}")
+
+    def _show_interfaces(self, args):
+        """Muestra estado de las interfaces"""
+        print("Interfaces:")
+        for iface in self.current_device.get_interfaces():
+            status = iface.status
+            ip = iface.ip_address if iface.ip_address else "no asignada"
+            neighbors = ', '.join([n.name for n in iface.neighbors.to_list()]) if iface.neighbors else "no conectada"
+            print(f"- {iface.name}: IP {ip}, estado {status}, vecinos: {neighbors}")
+
+    def _show_queue(self, args):
+        """Muestra paquetes en cola"""
+        print("Paquetes en cola:")
+        for i, packet in enumerate(self.current_device.get_queue(), 1):
+            print(f"{i}) De {packet.source_ip} a {packet.destination_ip}: {packet.content}")
+
+    def _show_statistics(self, args):
+        """Muestra estadísticas de red"""
+        stats = self.network.show_statistics()
+        print(stats)
+
+    def _send_packet(self, args):
+        """Envía un paquete (simulado)"""
+        if len(args) < 3:
+            print("Uso: send <ip_origen> <ip_destino> <mensaje> [ttl]")
+            return
+            
+        source, dest, message = args[0], args[1], ' '.join(args[2:-1]) if len(args) > 3 else args[2]
+        ttl = int(args[-1]) if len(args) > 3 and args[-1].isdigit() else 5
+        
+        if self.network.send_packet(source, dest, message, ttl):
+            print(f"Mensaje en cola para entrega: '{message}' de {source} a {dest} (TTL={ttl})")
+        else:
+            print("% No se encontró la interfaz con la IP de origen especificada")
+        print(self.get_prompt(), end='')
+
+    def _ping(self, args):
+        """Simula comando ping"""
+        if len(args) != 1:
+            print("Uso: ping <ip_destino>")
+            return
+            
+        print(f"Enviando ping a {args[0]}... (simulado)")
+        print(self.get_prompt(), end='')
+
+    def _process_tick(self, args):
+        """Procesa un paso de simulación"""
+        self.network.tick()
+        print("Paso de simulación completado")
+        print(self.get_prompt(), end='')
+
+    def _save_config(self, args):
+        """Guarda configuración actual a archivo"""
+        filename = args[0] if args else 'running-config.json'
+        try:
+            config = {
+                'devices': [],
+                'connections': []
+            }
+            
+            for device in self.network.list_devices():
+                device_data = {
+                    'name': device.name,
+                    'type': device.device_type,
+                    'status': device.status,
+                    'interfaces': []
+                }
+                
+                for iface in device.get_interfaces():
+                    iface_data = {
+                        'name': iface.name,
+                        'ip': iface.ip_address,
+                        'status': iface.status
+                    }
+                    device_data['interfaces'].append(iface_data)
+                
+                config['devices'].append(device_data)
+            
+            for conn in self.network.connections:
+                config['connections'].append(conn)
+            
+            with open(filename, 'w') as f:
+                json.dump(config, f, indent=2)
+            print(f"Configuración guardada en {filename}")
+        except Exception as e:
+            print(f"% Error guardando configuración: {e}")
+        print(self.get_prompt(), end='')
+
+    def _load_config(self, args):
+        """Carga configuración desde archivo"""
+        if not args:
+            print("Uso: load <archivo>")
+            return
+            
+        filename = args[0]
+        try:
+            with open(filename) as f:
+                config = json.load(f)
+            
+            self.network = Network()
+            
+            for device_data in config['devices']:
+                device = Device(device_data['name'], device_data['type'])
+                device.set_status(device_data['status'])
+                self.network.add_device(device)
+                
+                for iface_data in device_data['interfaces']:
+                    iface = Interface(iface_data['name'])
+                    if iface_data['ip']:
+                        iface.set_ip(iface_data['ip'])
+                    iface.set_status(iface_data['status'])
+                    device.add_interface(iface)
+
+            for conn in config['connections']:
+                self.network.connect(*conn)
+            
+            print(f"Configuración cargada desde {filename}")
+            self.current_device = self.network.list_devices()[0]  # Seleccionar primer dispositivo
+        except Exception as e:
+            print(f"% Error cargando configuración: {e}")
+        print(self.get_prompt(), end='')
+
+    def _show_help(self, args):
+        """Muestra ayuda para los comandos disponibles"""
+        print("Comandos disponibles:")
+        for cmd, func in self.commands[self.current_device.mode].items():
+            if cmd not in ['help', 'exit', 'end']:
+                print(f"- {cmd}")
+
+    def start(self):
+        """Inicia la interfaz de línea de comandos"""
+        print("Simulador de Red LAN - CLI estilo Router")
+        print("Escriba 'help' para ver comandos disponibles o 'exit' para salir\n")
+        
+        while True:
+            try:
+                command = input(self.get_prompt()).strip()
+                if command.lower() == 'exit':
+                    break
+                self.parse_command(command)
+            except KeyboardInterrupt:
+                print("\nSaliendo...")
+                break
+            except Exception as e:
+                print(f"\nError: {e}")
+
+if __name__ == "__main__":
+    cli = CLI()
+    cli.start()
