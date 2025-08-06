@@ -161,3 +161,19 @@ class Network:
             f"Top talker: {top_talker} (processed {self.device_activity.get(top_talker, 0)} packets)"
         )
         return stats
+    
+    def remove_device(self, device):
+        """Elimina un dispositivo de la red"""
+        # Eliminar primero todas sus conexiones
+        connections = [c for c in self.connections 
+                    if c[0] == device.name or c[2] == device.name]
+        
+        for conn in connections:
+            self.disconnect(*conn)
+        
+        # Luego eliminar el dispositivo
+        if self.devices.find(device):
+            self.devices.remove(device)
+            self.device_activity.pop(device.name, None)
+            return True
+        return False
