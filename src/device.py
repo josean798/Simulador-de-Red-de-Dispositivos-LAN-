@@ -1,3 +1,7 @@
+from LinkedList import LinkedList
+from Queue import Queue
+from Stack import Stack
+
 class Device:
     """
     Representa un dispositivo de red (router, switch, host, firewall).
@@ -9,10 +13,10 @@ class Device:
         """
         self.name = name
         self.device_type = device_type
-        self.interfaces = []  # Lista de objetos Interface
+        self.interfaces = LinkedList()  # Lista enlazada de objetos Interface
         self.status = 'up'    # 'up' (online) o 'down' (offline)
-        self.packet_queue = []  # Cola de paquetes entrantes/salientes
-        self.history_stack = []  # Pila de historial de recepción
+        self.packet_queue = Queue()  # Cola de paquetes entrantes/salientes
+        self.history_stack = Stack()  # Pila de historial de recepción
 
     def add_interface(self, interface):
         """
@@ -31,41 +35,39 @@ class Device:
 
     def get_interfaces(self):
         """
-        Devuelve la lista de interfaces del dispositivo.
+        Devuelve la lista de interfaces del dispositivo como lista de Python.
         """
-        return self.interfaces
+        return self.interfaces.to_list()
 
     def receive_packet(self, packet):
         """
         Recibe un paquete y lo almacena en la pila de historial.
         """
-        self.history_stack.append(packet)
+        self.history_stack.push(packet)
 
     def enqueue_packet(self, packet):
         """
         Encola un paquete para ser procesado/salido.
         """
-        self.packet_queue.append(packet)
+        self.packet_queue.enqueue(packet)
 
     def dequeue_packet(self):
         """
         Extrae el siguiente paquete de la cola.
         """
-        if self.packet_queue:
-            return self.packet_queue.pop(0)
-        return None
+        return self.packet_queue.dequeue()
 
     def get_history(self):
         """
         Devuelve el historial de paquetes recibidos (último primero).
         """
-        return list(reversed(self.history_stack))
+        return self.history_stack.to_list()[::-1]
 
     def get_queue(self):
         """
-        Devuelve la cola de paquetes pendientes.
+        Devuelve la cola de paquetes pendientes como lista de Python.
         """
-        return self.packet_queue
+        return self.packet_queue.to_list()
 
     def __str__(self):
         """

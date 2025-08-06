@@ -1,3 +1,5 @@
+from LinkedList import LinkedList
+
 class Network:
     """
     Orquesta el conjunto de dispositivos y conexiones en la red LAN simulada.
@@ -6,15 +8,15 @@ class Network:
 
     def __init__(self):
         """
-        Inicializa la red con una lista de dispositivos y variables para estadísticas.
-        - devices: lista de objetos Device presentes en la red.
+        Inicializa la red con una lista enlazada de dispositivos y variables para estadísticas.
+        - devices: LinkedList de objetos Device presentes en la red.
         - total_packets_sent: total de paquetes enviados.
         - total_packets_delivered: total de paquetes entregados exitosamente.
         - total_packets_dropped: total de paquetes descartados por TTL.
         - hops_sum: suma total de saltos realizados por los paquetes entregados.
         - device_activity: diccionario con la cantidad de paquetes procesados por cada dispositivo.
         """
-        self.devices = []  # Lista de objetos Device
+        self.devices = LinkedList()  # LinkedList de objetos Device
         self.total_packets_sent = 0
         self.total_packets_delivered = 0
         self.total_packets_dropped = 0
@@ -32,7 +34,7 @@ class Network:
         """
         Elimina un dispositivo de la red y de las estadísticas.
         """
-        if device in self.devices:
+        if self.devices.find(device):
             self.devices.remove(device)
             self.device_activity.pop(device.name, None)
 
@@ -41,7 +43,7 @@ class Network:
         Busca y retorna un dispositivo por su nombre.
         Si no existe, retorna None.
         """
-        for d in self.devices:
+        for d in self.devices.to_list():
             if d.name == name:
                 return d
         return None
@@ -78,9 +80,9 @@ class Network:
 
     def list_devices(self):
         """
-        Devuelve la lista de todos los dispositivos presentes en la red.
+        Devuelve la lista de todos los dispositivos presentes en la red como lista de Python.
         """
-        return self.devices
+        return self.devices.to_list()
 
     def set_device_status(self, device_name, status):
         """

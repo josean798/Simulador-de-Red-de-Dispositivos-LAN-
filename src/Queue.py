@@ -1,38 +1,61 @@
+from Node import Node
+
 class Queue:
-    """Implementación de cola para manejo de paquetes"""
+    """Implementación de cola para manejo de paquetes usando nodos enlazados"""
     def __init__(self, max_size=100):
-        self.items = []
+        self.front = None
+        self.rear = None
+        self.max_size = max_size
+        self._size = 0
 
     def enqueue(self, item):
         """Encola un elemento, removiendo el más antiguo si se excede el tamaño máximo"""
-        if len(self.items) >= self.max_size:
+        new_node = Node(item)
+        if self._size >= self.max_size:
             self.dequeue()
-        self.items.append(item)
+        if not self.front:
+            self.front = self.rear = new_node
+        else:
+            self.rear.next = new_node
+            self.rear = new_node
+        self._size += 1
 
     def dequeue(self):
         """Desencola un elemento"""
-        if not self.is_empty():
-            return self.items.pop(0)
+        if self.front:
+            value = self.front.data
+            self.front = self.front.next
+            self._size -= 1
+            if not self.front:
+                self.rear = None
+            return value
         return None
 
     def is_empty(self):
         """Verifica si la cola está vacía"""
-        return len(self.items) == 0
+        return self._size == 0
 
     def size(self):
         """Tamaño actual de la cola"""
-        return len(self.items)
+        return self._size
 
     def clear(self):
         """Vacía la cola"""
-        self.items = []
+        self.front = None
+        self.rear = None
+        self._size = 0
 
     def peek(self):
         """Mira el primer elemento sin desencolar"""
-        if not self.is_empty():
-            return self.items[0]
+        if self.front:
+            return self.front.data
         return None
 
     def get_all(self):
         """Obtiene todos los elementos en orden FIFO"""
-        return self.items.copy()
+        result = []
+        current = self.front
+        while current:
+            result.append(current.data)
+            current = current.next
+        return result

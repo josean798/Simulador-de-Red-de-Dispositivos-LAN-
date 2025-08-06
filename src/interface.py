@@ -1,3 +1,6 @@
+from Queue import Queue
+from LinkedList import LinkedList
+
 class Interface:
     """
     Representa una interfaz de red de un dispositivo (ej: g0/0, eth0).
@@ -10,8 +13,8 @@ class Interface:
         self.name = name
         self.ip_address = None
         self.status = 'up'  # 'up' (activa) o 'down' (inactiva)
-        self.neighbors = []  # Interfaces conectadas (lista enlazada)
-        self.packet_queue = []  # Cola de paquetes para la interfaz
+        self.neighbors = LinkedList()  # Interfaces conectadas (lista enlazada)
+        self.packet_queue = Queue()  # Cola de paquetes para la interfaz
 
     def set_ip(self, ip):
         """
@@ -35,7 +38,7 @@ class Interface:
         """
         Conecta esta interfaz con otra interfaz (enlaza físicamente).
         """
-        if other_interface not in self.neighbors:
+        if not self.neighbors.find(other_interface):
             self.neighbors.append(other_interface)
             other_interface.neighbors.append(self)
 
@@ -43,7 +46,7 @@ class Interface:
         """
         Desconecta esta interfaz de otra interfaz.
         """
-        if other_interface in self.neighbors:
+        if self.neighbors.find(other_interface):
             self.neighbors.remove(other_interface)
             other_interface.neighbors.remove(self)
 
@@ -51,21 +54,19 @@ class Interface:
         """
         Encola un paquete en la interfaz.
         """
-        self.packet_queue.append(packet)
+        self.packet_queue.enqueue(packet)
 
     def dequeue_packet(self):
         """
         Extrae el siguiente paquete de la cola de la interfaz.
         """
-        if self.packet_queue:
-            return self.packet_queue.pop(0)
-        return None
+        return self.packet_queue.dequeue()
 
     def get_queue(self):
         """
-        Devuelve la cola de paquetes pendientes en la interfaz.
+        Devuelve la cola de paquetes pendientes en la interfaz como lista de Python.
         """
-        return self.packet_queue
+        return self.packet_queue.to_list()
 
     def __str__(self):
         """
@@ -73,5 +74,6 @@ class Interface:
         """
         ip = self.ip_address if self.ip_address else "Sin IP"
         estado = "Activa" if self.status == 'up' else "Inactiva"
-        vecinos = ', '.join([n.name for n in self.neighbors]) if self.neighbors else "Sin conexiones"
+        vecinos_list = self.neighbors.to_list()
+        vecinos = ', '.join([n.name for n in vecinos_list]) if vecinos_list else "Sin conexiones"
         return f"{self.name} | IP: {ip} | Estado: {estado} | Vecinos: {vecinos}"

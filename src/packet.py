@@ -1,4 +1,5 @@
 import uuid
+from LinkedList import LinkedList
 
 class Packet:
     """
@@ -13,7 +14,7 @@ class Packet:
         self.destination_ip = destination_ip
         self.content = content
         self.ttl = ttl
-        self.path = []  # Lista de nombres de dispositivos por los que ha pasado
+        self.path = LinkedList()  # LinkedList de nombres de dispositivos por los que ha pasado
 
     def hop(self, device_name):
         """
@@ -32,7 +33,8 @@ class Packet:
         """
         Representación en texto del paquete.
         """
-        ruta = ' → '.join(self.path) if self.path else 'Sin ruta'
+        ruta_list = self.path.to_list()
+        ruta = ' → '.join(ruta_list) if ruta_list else 'Sin ruta'
         return (f"Packet {self.id}\n"
                 f"De: {self.source_ip} a {self.destination_ip}\n"
                 f"Mensaje: {self.content}\n"
