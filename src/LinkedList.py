@@ -8,6 +8,12 @@ class LinkedList:
         self.head = None
         self.size = 0
 
+    def __iter__(self):  # <-- Añade este método
+        current = self.head
+        while current:
+            yield current.data
+            current = current.next
+
     def append(self, data):
         """
         Agrega un elemento al final de la lista.

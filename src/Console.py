@@ -1,26 +1,19 @@
 import json
-from enum import Enum, auto
-from Network import Network
-from Device import Device
-from Interface import Interface
-from Packet import Packet
-
-class Mode(Enum):
-    """Enumeración de modos de operación del CLI"""
-    USER = auto()
-    PRIVILEGED = auto()
-    CONFIG = auto()
-    CONFIG_IF = auto()
+from Mode import Mode
+from network import Network
+from device import Device
+from interface import Interface
+from packet import Packet
 
 class CLI:
     """Interfaz de línea de comandos mejorada para el simulador de red"""
     
     def __init__(self):
-        self.current_device = None
+        self.current_device = Device("HostRouter", "host")  # Dispositivo temporal
         self.network = Network()
         self.current_interface = None
         self.init_commands()
-        self.load_default_config()
+        
     
     def init_commands(self):
         """Inicializa todos los comandos disponibles organizados por modo"""
@@ -64,28 +57,6 @@ class CLI:
                 'help': self._show_help
             }
         }
-
-    def load_default_config(self):
-        """Carga una configuración inicial por defecto"""
-        self.network.add_device(Device("Router1", "router"))
-        self.network.add_device(Device("Switch1", "switch"))
-        self.network.add_device(Device("PC1", "host"))
-        
-        # Configurar interfaces básicas
-        router = self.network.get_device("Router1")
-        switch = self.network.get_device("Switch1")
-        pc = self.network.get_device("PC1")
-        
-        router.add_interface(Interface("g0/0"))
-        router.add_interface(Interface("g0/1"))
-        switch.add_interface(Interface("g0/1"))
-        pc.add_interface(Interface("eth0"))
-        
-        # Conectar dispositivos
-        self.network.connect("Router1", "g0/0", "Switch1", "g0/1")
-        self.network.connect("Router1", "g0/1", "PC1", "eth0")
-        
-        self.current_device = router
 
     def parse_command(self, command):
         """Procesa un comando ingresado por el usuario"""
@@ -466,20 +437,28 @@ class CLI:
 
     def start(self):
         """Inicia la interfaz de línea de comandos"""
-        print("Simulador de Red LAN - CLI estilo Router")
+        print("Red LAN - CLI")
         print("Escriba 'help' para ver comandos disponibles o 'exit' para salir\n")
         
         while True:
             try:
                 command = input(self.get_prompt()).strip()
+                if not command:
+                    continue
                 if command.lower() == 'exit':
-                    break
-                self.parse_command(command)
+                    if self.current_device.mode in [Mode.USER, Mode.PRIVILEGED]:
+                        break
+                    else:
+                        self.parse_command(command)
+                else:
+                    self.parse_command(command)
+                    
             except KeyboardInterrupt:
                 print("\nSaliendo...")
                 break
             except Exception as e:
                 print(f"\nError: {e}")
+
 
 if __name__ == "__main__":
     cli = CLI()

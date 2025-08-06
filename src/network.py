@@ -1,6 +1,6 @@
 
 from LinkedList import LinkedList
-from Packet import Packet
+from packet import Packet
 
 class Network:
     """
