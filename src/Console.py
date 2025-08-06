@@ -39,7 +39,10 @@ class CLI:
                 'process': self._process_tick,
                 'exit': self._exit_privileged,
                 'end': self._end_config,
-                'help': self._show_help
+                'help': self._show_help,
+                'add_device': self._add_device,
+                'remove_device': self._remove_device,
+                'add_interface': self._add_interface,
             },
             Mode.CONFIG: {
                 'hostname': self._set_hostname,
@@ -458,6 +461,77 @@ class CLI:
                 break
             except Exception as e:
                 print(f"\nError: {e}")
+
+    def _add_device(self, args):
+        """Añade un nuevo dispositivo a la red"""
+        if len(args) != 2:
+            print("Uso: add_device <nombre> <tipo>")
+            print("Tipos válidos: router, switch, host, firewall")
+            return
+    
+        name, dtype = args[0], args[1].lower()
+        
+        if dtype not in ['router', 'switch', 'host', 'firewall']:
+            print("% Tipo de dispositivo inválido")
+            return
+            
+        if self.network.get_device(name):
+            print(f"% El dispositivo {name} ya existe")
+            return
+            
+        device = Device(name, dtype)
+        self.network.add_device(device)
+        print(f"Dispositivo {name} ({dtype}) añadido")
+        print(self.get_prompt(), end='')
+
+    def _remove_device(self, args):
+        """Elimina un dispositivo de la red"""
+        if len(args) != 1:
+            print("Uso: remove_device <nombre>")
+            return
+        
+        name = args[0]
+        device = self.network.get_device(name)
+        
+        if not device:
+            print(f"% Dispositivo {name} no encontrado")
+            return
+            
+        # Verificar conexiones primero
+        connections = [c for c in self.network.connections 
+                    if c[0] == name or c[2] == name]
+        
+        if connections:
+            print("% Error: El dispositivo tiene conexiones activas")
+            print("Desconéctelo primero con 'disconnect'")
+            return
+            
+        self.network.remove_device(device)
+        print(f"Dispositivo {name} eliminado")
+        print(self.get_prompt(), end='')
+
+    def _add_interface(self, args):
+        """Añade una interfaz a un dispositivo"""
+        if len(args) != 2:
+            print("Uso: add_interface <dispositivo> <nombre_interfaz>")
+            return
+        
+        dev_name, iface_name = args[0], args[1]
+        device = self.network.get_device(dev_name)
+        
+        if not device:
+            print(f"% Dispositivo {dev_name} no encontrado")
+            return
+            
+        # Verificar si la interfaz ya existe
+        if any(iface.name == iface_name for iface in device.get_interfaces()):
+            print(f"% La interfaz {iface_name} ya existe en {dev_name}")
+            return
+            
+        iface = Interface(iface_name)
+        device.add_interface(iface)
+        print(f"Interfaz {iface_name} añadida a {dev_name}")
+        print(self.get_prompt(), end='')
 
 
 if __name__ == "__main__":
