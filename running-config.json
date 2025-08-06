@@ -1,0 +1,11 @@
+{
+  "devices": [
+    {
+      "name": "r1",
+      "type": "router",
+      "status": "up",
+      "interfaces": []
+    }
+  ],
+  "connections": []
+}

@@ -536,6 +536,33 @@ class CLI:
         print(self.get_prompt(), end='')
 
 
+import os
+
+def auto_load_config(cli, filename="running-config.json"):
+    """Carga configuración automáticamente si existe el archivo JSON al iniciar."""
+    if os.path.exists(filename):
+        try:
+            cli.network = load_network_config(filename)
+            cli.statistics = NetworkStatistics(cli.network)
+            devices = cli.network.list_devices()
+            if devices:
+                cli.current_device = devices[0]
+            print(f"Configuración cargada automáticamente desde {filename}")
+        except Exception as e:
+            print(f"% Error cargando configuración automática: {e}")
+
+def auto_save_config(cli, filename="running-config.json"):
+    """Guarda configuración automáticamente al salir del programa."""
+    try:
+        save_network_config(cli.network, filename)
+        print(f"Configuración guardada automáticamente en {filename}")
+    except Exception as e:
+        print(f"% Error guardando configuración automática: {e}")
+
 if __name__ == "__main__":
     cli = CLI()
-    cli.start()
+    auto_load_config(cli)
+    try:
+        cli.start()
+    finally:
+        auto_save_config(cli)
