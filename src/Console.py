@@ -1,19 +1,24 @@
 import json
 from Mode import Mode
-from network import Network
-from device import Device
-from interface import Interface
-from packet import Packet
+from Network import Network
+from Device import Device
+from Interface import Interface
+from Packet import Packet
+from network_statistics import NetworkStatistics
+from network_persistence import save_network_config, load_network_config
 
 class CLI:
-    """Interfaz de línea de comandos mejorada para el simulador de red"""
+    """
+    Interfaz de línea de comandos mejorada para el simulador de red
+    Incluye integración de módulos de estadísticas y persistencia.
+    """
     
     def __init__(self):
         self.current_device = Device("HostRouter", "host")  # Dispositivo temporal
         self.network = Network()
         self.current_interface = None
+        self.statistics = NetworkStatistics(self.network)
         self.init_commands()
-        
     
     def init_commands(self):
         """Inicializa todos los comandos disponibles organizados por modo"""
@@ -323,9 +328,16 @@ class CLI:
             print(f"{i}) De {packet.source_ip} a {packet.destination_ip}: {packet.content}")
 
     def _show_statistics(self, args):
-        """Muestra estadísticas de red"""
-        stats = self.network.show_statistics()
-        print(stats)
+        """
+        Muestra estadísticas de red y permite exportarlas si se indica un archivo.
+        Uso: show statistics [export <archivo>]
+        """
+        if args and args[0] == 'export' and len(args) > 1:
+            filename = args[1]
+            self.statistics.export_statistics(filename)
+        else:
+            self.statistics.show_statistics()
+        print(self.get_prompt(), end='')
 
     def _send_packet(self, args):
         """Envía un paquete (simulado)"""
@@ -358,72 +370,35 @@ class CLI:
         print(self.get_prompt(), end='')
 
     def _save_config(self, args):
-        """Guarda configuración actual a archivo"""
+        """
+        Guarda configuración actual a archivo usando el módulo de persistencia.
+        Uso: save [archivo]
+        """
         filename = args[0] if args else 'running-config.json'
         try:
-            config = {
-                'devices': [],
-                'connections': []
-            }
-            
-            for device in self.network.list_devices():
-                device_data = {
-                    'name': device.name,
-                    'type': device.device_type,
-                    'status': device.status,
-                    'interfaces': []
-                }
-                
-                for iface in device.get_interfaces():
-                    iface_data = {
-                        'name': iface.name,
-                        'ip': iface.ip_address,
-                        'status': iface.status
-                    }
-                    device_data['interfaces'].append(iface_data)
-                
-                config['devices'].append(device_data)
-            
-            for conn in self.network.connections:
-                config['connections'].append(conn)
-            
-            with open(filename, 'w') as f:
-                json.dump(config, f, indent=2)
-            print(f"Configuración guardada en {filename}")
+            save_network_config(self.network, filename)
         except Exception as e:
             print(f"% Error guardando configuración: {e}")
         print(self.get_prompt(), end='')
 
     def _load_config(self, args):
-        """Carga configuración desde archivo"""
+        """
+        Carga configuración desde archivo usando el módulo de persistencia.
+        Uso: load <archivo>
+        """
         if not args:
             print("Uso: load <archivo>")
+            print(self.get_prompt(), end='')
             return
-            
         filename = args[0]
         try:
-            with open(filename) as f:
-                config = json.load(f)
-            
-            self.network = Network()
-            
-            for device_data in config['devices']:
-                device = Device(device_data['name'], device_data['type'])
-                device.set_status(device_data['status'])
-                self.network.add_device(device)
-                
-                for iface_data in device_data['interfaces']:
-                    iface = Interface(iface_data['name'])
-                    if iface_data['ip']:
-                        iface.set_ip(iface_data['ip'])
-                    iface.set_status(iface_data['status'])
-                    device.add_interface(iface)
-
-            for conn in config['connections']:
-                self.network.connect(*conn)
-            
+            self.network = load_network_config(filename)
+            self.statistics = NetworkStatistics(self.network)
+            # Seleccionar primer dispositivo si existe
+            devices = self.network.list_devices()
+            if devices:
+                self.current_device = devices[0]
             print(f"Configuración cargada desde {filename}")
-            self.current_device = self.network.list_devices()[0]  # Seleccionar primer dispositivo
         except Exception as e:
             print(f"% Error cargando configuración: {e}")
         print(self.get_prompt(), end='')
