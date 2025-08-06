@@ -1,4 +1,3 @@
-# console.py
 import json
 from enum import Enum, auto
 from Stack import Stack
@@ -7,19 +6,19 @@ from Node import LinkedList
 
 class Mode(Enum):
     """Enumeración de modos de operación del CLI"""
-    USER = auto()        # Modo usuario (Ejemplo: Router>)
-    PRIVILEGED = auto()  # Modo privilegiado (Ejemplo: Router#)
-    CONFIG = auto()      # Modo configuración global (Ejemplo: Router(config)#)
-    CONFIG_IF = auto()   # Modo configuración de interfaz (Ejemplo: Router(config-if)#)
+    USER = auto()
+    PRIVILEGED = auto()
+    CONFIG = auto()
+    CONFIG_IF = auto()
 
 class Interface:
     """Representa una interfaz de red"""
     def __init__(self, name):
         self.name = name
         self.ip_address = None
-        self.connected_to = None  # Tupla (dispositivo, interfaz)
-        self.status = 'down'      # 'up' o 'down'
-        self.neighbors = LinkedList()  # Dispositivos conectados
+        self.connected_to = None 
+        self.status = 'down'
+        self.neighbors = LinkedList()
 
     def set_ip(self, ip):
         """Configura dirección IP"""
@@ -46,13 +45,13 @@ class Device:
     """Representa un dispositivo de red"""
     def __init__(self, name, device_type):
         self.name = name
-        self.type = device_type  # 'router', 'switch', 'host', 'firewall'
+        self.type = device_type
         self.mode = Mode.USER
-        self.interfaces = {}     # Diccionario de interfaces
-        self.packet_history = Stack()  # Historial de paquetes
-        self.packet_queue = Queue()    # Cola de paquetes
+        self.interfaces = {}
+        self.packet_history = Stack()
+        self.packet_queue = Queue()
         self.online = True
-        self.config = []         # Configuración acumulada
+        self.config = []
         
     def add_interface(self, name):
         """Añade una nueva interfaz"""
@@ -90,8 +89,8 @@ class Device:
 class Network:
     """Representa la red completa"""
     def __init__(self):
-        self.devices = {}        # Diccionario de dispositivos
-        self.connections = []    # Lista de conexiones
+        self.devices = {}
+        self.connections = []
         self.stats = {
             'total_packets': 0,
             'delivered': 0,
@@ -113,15 +112,12 @@ class Network:
             iface1 in self.devices[dev1].interfaces and 
             iface2 in self.devices[dev2].interfaces):
             
-            # Establecer conexión bidireccional
             self.devices[dev1].get_interface(iface1).connected_to = (dev2, iface2)
             self.devices[dev2].get_interface(iface2).connected_to = (dev1, iface1)
             
-            # Añadir a lista de vecinos
             self.devices[dev1].get_interface(iface1).neighbors.append(dev2)
             self.devices[dev2].get_interface(iface2).neighbors.append(dev1)
             
-            # Registrar conexión
             self.connections.append((dev1, iface1, dev2, iface2))
             return True
         return False
@@ -130,15 +126,12 @@ class Network:
         """Desconecta dos interfaces"""
         connection = (dev1, iface1, dev2, iface2)
         if connection in self.connections:
-            # Eliminar conexión bidireccional
             self.devices[dev1].get_interface(iface1).connected_to = None
             self.devices[dev2].get_interface(iface2).connected_to = None
             
-            # Eliminar de lista de vecinos
             self.devices[dev1].get_interface(iface1).neighbors.remove(dev2)
             self.devices[dev2].get_interface(iface2).neighbors.remove(dev1)
             
-            # Eliminar de conexiones
             self.connections.remove(connection)
             return True
         return False
@@ -148,10 +141,9 @@ class CLI:
     def __init__(self):
         self.current_device = None
         self.network = Network()
-        self.current_interface = None  # Interfaz actual en modo config-if
+        self.current_interface = None
         self.init_commands()
         
-        # Dispositivo por defecto para pruebas
         self.network.add_device("Router1", "router")
         self.network.devices["Router1"].add_interface("g0/0")
         self.current_device = self.network.devices["Router1"]
@@ -176,7 +168,7 @@ class CLI:
                 'save': self._save_config,
                 'load': self._load_config,
                 'exit': self._exit_privileged,
-                'end': lambda _: None  # No hace nada en este modo
+                'end': lambda _: None 
             },
             Mode.CONFIG: {
                 'hostname': self._set_hostname,
@@ -203,19 +195,16 @@ class CLI:
         cmd = parts[0].lower()
         args = parts[1:]
 
-        # Manejo de comandos compuestos
         if cmd == 'configure' and len(parts) > 1 and parts[1].lower() == 'terminal':
             cmd = 'configure'
         elif cmd == 'no' and len(parts) > 1 and parts[1].lower() == 'shutdown':
             cmd = 'no'
         elif cmd == 'show' and len(parts) > 1:
-            # Manejar subcomandos de show
             show_cmd = ' '.join(parts[:2]).lower()
             if show_cmd in ['show history', 'show interfaces', 'show queue', 'show statistics']:
                 cmd = 'show'
                 args = parts[1:]
 
-        # Ejecutar comando si existe en el modo actual
         if cmd in self.commands[self.current_device.mode]:
             try:
                 self.commands[self.current_device.mode][cmd](args)
@@ -223,8 +212,6 @@ class CLI:
                 print(f"Error ejecutando comando: {e}")
         else:
             print(f"% Comando '{cmd}' no reconocido o no disponible en el modo actual")
-
-    # --- Implementación de comandos ---
 
     def _enable(self, args):
         """Cambia a modo privilegiado"""
@@ -455,7 +442,6 @@ class CLI:
             'path': []
         }
         
-        # Simular envío (en una implementación real esto iría a la cola)
         print(f"Mensaje en cola para entrega: '{message}' de {source} a {dest} (TTL={ttl})")
         print(self.current_device.get_prompt(), end='')
 
@@ -507,10 +493,8 @@ class CLI:
             with open(filename) as f:
                 config = json.load(f)
             
-            # Limpiar red actual
             self.network = Network()
             
-            # Cargar dispositivos
             for name, data in config['devices'].items():
                 self.network.add_device(name, data['type'])
                 device = self.network.devices[name]
@@ -520,8 +504,7 @@ class CLI:
                     if ifdata['ip']:
                         iface.set_ip(ifdata['ip'])
                     iface.set_status(ifdata['status'])
-            
-            # Establecer conexiones
+
             for conn in config['connections']:
                 self.network.connect_interfaces(*conn)
             
@@ -547,8 +530,3 @@ class CLI:
                 break
             except Exception as e:
                 print(f"\nError: {e}")
-
-# Ejemplo de uso
-if __name__ == "__main__":
-    cli = CLI()
-    cli.start()
