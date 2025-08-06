@@ -74,7 +74,7 @@ class Interface:
         """
         Devuelve la cola de paquetes pendientes en la interfaz como lista de Python.
         """
-        return self.packet_queue.to_list()
+        return self.packet_queue.get_all()
 
     def __str__(self):
         """
@@ -82,6 +82,8 @@ class Interface:
         """
         ip = self.ip_address if self.ip_address else "Sin IP"
         estado = "Activa" if self.status == 'up' else "Inactiva"
-        vecinos_list = self.neighbors.to_list()
-        vecinos = ', '.join([n.name for n in vecinos_list]) if vecinos_list else "Sin conexiones"
+        vecinos = "Sin conexiones"
+        if hasattr(self.neighbors, 'to_list'):
+            vecinos_list = self.neighbors.to_list()
+            vecinos = ', '.join([n.name for n in vecinos_list]) if vecinos_list else "Sin conexiones"
         return f"{self.name} | IP: {ip} | Estado: {estado} | Vecinos: {vecinos}"

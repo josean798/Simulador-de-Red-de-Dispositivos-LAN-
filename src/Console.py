@@ -66,6 +66,13 @@ class CLI:
                 'help': self._show_help
             }
         }
+        # Subcomandos válidos para show
+        self.SHOW_COMMANDS = [
+            'show history',
+            'show interfaces',
+            'show queue',
+            'show statistics'
+        ]
 
     def parse_command(self, command):
         """Procesa un comando ingresado por el usuario"""
@@ -311,10 +318,28 @@ class CLI:
         print(self.get_prompt(), end='')
 
     def _show_history(self, args):
-        """Muestra historial de paquetes"""
-        print("Historial de paquetes:")
-        for i, packet in enumerate(self.current_device.get_history(), 1):
-            print(f"{i}) De {packet.source_ip} a {packet.destination_ip}: {packet.content}")
+        """
+        Muestra historial de paquetes enviados y recibidos por el dispositivo actual.
+        """
+        sent, received = self.current_device.get_history()
+
+        print("Historial de paquetes enviados:")
+        if sent:
+            for i, packet in enumerate(sent, 1):
+                path = ' → '.join(packet.path.to_list()) if hasattr(packet, 'path') and hasattr(packet.path, 'to_list') else 'N/A'
+                ttl_expired = 'Sí' if getattr(packet, 'ttl', 1) == 0 else 'No'
+                print(f"{i}) A {packet.destination_ip}: \"{packet.content}\" | TTL al enviar: {getattr(packet, 'ttl', 'N/A')} | Ruta: {path} | TTL expirado? {ttl_expired}")
+        else:
+            print("  (Ningún paquete enviado)")
+
+        print("\nHistorial de paquetes recibidos:")
+        if received:
+            for i, packet in enumerate(received, 1):
+                path = ' → '.join(packet.path.to_list()) if hasattr(packet, 'path') and hasattr(packet.path, 'to_list') else 'N/A'
+                ttl_expired = 'Sí' if getattr(packet, 'ttl', 1) == 0 else 'No'
+                print(f"{i}) De {packet.source_ip}: \"{packet.content}\" | TTL al recibir: {getattr(packet, 'ttl', 'N/A')} | Ruta: {path} | TTL expirado? {ttl_expired}")
+        else:
+            print("  (Ningún paquete recibido)")
 
     def _show_interfaces(self, args):
         """Muestra estado de las interfaces"""
@@ -322,7 +347,13 @@ class CLI:
         for iface in self.current_device.get_interfaces():
             status = iface.status
             ip = iface.ip_address if iface.ip_address else "no asignada"
-            neighbors = ', '.join([n.name for n in iface.neighbors.to_list()]) if iface.neighbors else "no conectada"
+            neighbors = 'no conectada'
+            if iface.neighbors:
+                if hasattr(iface.neighbors, 'to_list'):
+                    vecinos_list = iface.neighbors.to_list()
+                    neighbors = ', '.join([n.name for n in vecinos_list]) if vecinos_list else 'no conectada'
+                else:
+                    neighbors = str(iface.neighbors)
             print(f"- {iface.name}: IP {ip}, estado {status}, vecinos: {neighbors}")
 
     def _show_queue(self, args):
@@ -344,16 +375,37 @@ class CLI:
         print(self.get_prompt(), end='')
 
     def _send_packet(self, args):
-        """Envía un paquete (simulado)"""
+        """Envía un paquete (simulado) y registra en historial de emisor y receptor"""
         if len(args) < 3:
             print("Uso: send <ip_origen> <ip_destino> <mensaje> [ttl]")
             return
-            
+
         source, dest, message = args[0], args[1], ' '.join(args[2:-1]) if len(args) > 3 else args[2]
         ttl = int(args[-1]) if len(args) > 3 and args[-1].isdigit() else 5
-        
-        if self.network.send_packet(source, dest, message, ttl):
+
+        # Enviar el paquete usando la lógica de red
+        sent = self.network.send_packet(source, dest, message, ttl)
+        if sent:
             print(f"Mensaje en cola para entrega: '{message}' de {source} a {dest} (TTL={ttl})")
+            # Registrar en historial de enviados del emisor
+            from Packet import Packet
+            pkt = Packet(source, dest, message, ttl)
+            if hasattr(self.current_device, 'add_sent'):
+                self.current_device.add_sent(pkt)
+
+            # Buscar el receptor por IP de destino
+            receptor = None
+            for device in self.network.list_devices():
+                for iface in device.get_interfaces():
+                    if iface.ip_address == dest:
+                        receptor = device
+                        break
+                if receptor:
+                    break
+            if receptor and hasattr(receptor, 'add_received'):
+                from Packet import Packet
+                pkt2 = Packet(source, dest, message, ttl)
+                receptor.add_received(pkt2)
         else:
             print("% No se encontró la interfaz con la IP de origen especificada")
         print(self.get_prompt(), end='')
@@ -396,9 +448,26 @@ class CLI:
             return
         filename = args[0]
         try:
-            self.network = load_network_config(filename)
+            # Cargar config manualmente para poder asignar status a interfaces
+            import json
+            from Interface import Interface
+            from Device import Device
+            with open(filename) as f:
+                config = json.load(f)
+            self.network = Network()
+            for device_data in config['devices']:
+                device = Device(device_data['name'], device_data['type'])
+                device.set_status(device_data['status'])
+                self.network.add_device(device)
+                for iface_data in device_data['interfaces']:
+                    iface = Interface(iface_data['name'])
+                    if iface_data['ip']:
+                        iface.set_ip(iface_data['ip'])
+                    iface.status = iface_data['status']  # Asignar status directamente
+                    device.add_interface(iface)
+            for conn in config['connections']:
+                self.network.connect(*conn)
             self.statistics = NetworkStatistics(self.network)
-            # Seleccionar primer dispositivo si existe
             devices = self.network.list_devices()
             if devices:
                 self.current_device = devices[0]

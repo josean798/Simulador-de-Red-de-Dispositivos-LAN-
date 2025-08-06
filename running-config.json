@@ -4,7 +4,25 @@
       "name": "r1",
       "type": "router",
       "status": "up",
-      "interfaces": []
+      "interfaces": [
+        {
+          "name": "eth0",
+          "ip": "192.168.1.1",
+          "status": "up"
+        }
+      ]
+    },
+    {
+      "name": "r2",
+      "type": "router",
+      "status": "up",
+      "interfaces": [
+        {
+          "name": "eth0",
+          "ip": "192.168.1.2",
+          "status": "up"
+        }
+      ]
     }
   ],
   "connections": []

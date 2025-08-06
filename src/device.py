@@ -17,7 +17,8 @@ class Device:
         self.interfaces = LinkedList()  # Lista enlazada de objetos Interface
         self.status = 'up'    # 'up' (online) o 'down' (offline)
         self.packet_queue = Queue()  # Cola de paquetes entrantes/salientes
-        self.history_stack = Stack()  # Pila de historial de recepción
+        self.sent_stack = Stack()      # Pila de historial de enviados
+        self.received_stack = Stack()  # Pila de historial de recibidos
         self.mode = Mode.USER  
 
     def add_interface(self, interface):
@@ -41,11 +42,24 @@ class Device:
         """
         return self.interfaces.to_list()
 
+
     def receive_packet(self, packet):
         """
-        Recibe un paquete y lo almacena en la pila de historial.
+        Recibe un paquete y lo almacena en el historial de recibidos.
         """
-        self.history_stack.push(packet)
+        self.received_stack.push(packet)
+
+    def add_sent(self, packet):
+        """
+        Agrega un paquete al historial de enviados.
+        """
+        self.sent_stack.push(packet)
+
+    def add_received(self, packet):
+        """
+        Agrega un paquete al historial de recibidos.
+        """
+        self.received_stack.push(packet)
 
     def enqueue_packet(self, packet):
         """
@@ -59,17 +73,30 @@ class Device:
         """
         return self.packet_queue.dequeue()
 
-    def get_history(self):
+
+    def get_sent(self):
+        """
+        Devuelve el historial de paquetes enviados (último primero).
+        """
+        return self.sent_stack.get_all()
+
+    def get_received(self):
         """
         Devuelve el historial de paquetes recibidos (último primero).
         """
-        return self.history_stack.to_list()[::-1]
+        return self.received_stack.get_all()
+
+    def get_history(self):
+        """
+        Devuelve ambos historiales (enviados, recibidos) como tupla.
+        """
+        return (self.get_sent(), self.get_received())
 
     def get_queue(self):
         """
         Devuelve la cola de paquetes pendientes como lista de Python.
         """
-        return self.packet_queue.to_list()
+        return self.packet_queue.get_all()
 
     def __str__(self):
         """
