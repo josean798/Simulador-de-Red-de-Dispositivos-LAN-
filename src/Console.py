@@ -1,9 +1,9 @@
 # console.py
 import json
 from enum import Enum, auto
-from stack import Stack
-from queue import Queue
-from node import LinkedList
+from Stack import Stack
+from Queue import Queue
+from Node import LinkedList
 
 class Mode(Enum):
     """Enumeración de modos de operación del CLI"""
