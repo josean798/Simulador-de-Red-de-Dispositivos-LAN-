@@ -2,6 +2,9 @@ from Mode import Mode
 from LinkedList import LinkedList
 from Queue import Queue
 from Stack import Stack
+# Importar las nuevas estructuras de datos
+from avl_route_table import AVLRouteTable
+from prefix_trie import PrefixTrie
 
 class Device:
     """
@@ -19,6 +22,10 @@ class Device:
         self.packet_queue = Queue()  # Cola de paquetes entrantes/salientes
         self.history_stack = Stack()  # Pila de historial de recepción
         self.mode = Mode.USER  
+        
+        # Nuevas estructuras para Módulos 1 y 3 del Proyecto 2
+        self.route_table = AVLRouteTable() # Tabla de rutas AVL para este dispositivo
+        self.prefix_trie = PrefixTrie()    # Trie de políticas para este dispositivo
 
     def add_interface(self, interface):
         """
@@ -63,13 +70,14 @@ class Device:
         """
         Devuelve el historial de paquetes recibidos (último primero).
         """
-        return self.history_stack.to_list()[::-1]
+        # Retorna una copia invertida para que el más reciente sea el primero
+        return self.history_stack.get_all()[::-1] 
 
     def get_queue(self):
         """
         Devuelve la cola de paquetes pendientes como lista de Python.
         """
-        return self.packet_queue.to_list()
+        return self.packet_queue.get_all()
 
     def __str__(self):
         """

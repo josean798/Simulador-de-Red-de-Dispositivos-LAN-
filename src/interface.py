@@ -29,6 +29,13 @@ class Interface:
         if len(parts) != 4:
             return False
         return all(part.isdigit() and 0 <= int(part) <= 255 for part in parts)
+    
+    def set_status(self, status):
+        """Establece el estado de la interfaz ('up' o 'down')"""
+        if status in ['up', 'down']:
+            self.status = status
+            return True
+        return False
 
     def shutdown(self):
         """

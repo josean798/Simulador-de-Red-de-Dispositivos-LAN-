@@ -3,9 +3,9 @@ Modulo 6: Persistencia de Configuración
 Este módulo proporciona funciones para guardar y cargar la configuración de la red en archivos JSON.
 """
 import json
-from Device import Device
-from Interface import Interface
-from Network import Network
+from device import Device
+from interface import Interface
+from network import Network
 
 def save_network_config(network, filename="running-config.json"):
     config = {
@@ -33,10 +33,10 @@ def save_network_config(network, filename="running-config.json"):
         json.dump(config, f, indent=2)
     print(f"Configuración guardada en {filename}")
 
-def load_network_config(filename):
+def load_network_config(filename, errorlog):
     with open(filename) as f:
         config = json.load(f)
-    network = Network()
+    network = Network(errorlog)
     for device_data in config['devices']:
         device = Device(device_data['name'], device_data['type'])
         device.set_status(device_data['status'])
