@@ -3,7 +3,7 @@ from LinkedList import LinkedList
 
 class Packet:
     """
-    Representa un paquete de red virtual para el simulador LAN.
+    Representa un paquete de red virtual para el simulador LAN..
     """
     def __init__(self, source_ip, destination_ip, content, ttl=5):
         """

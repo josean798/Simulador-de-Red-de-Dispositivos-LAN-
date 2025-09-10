@@ -1,6 +1,6 @@
 """
 Modulo 5: Estadísticas y Reportes
-Este módulo proporciona funciones para recopilar y mostrar estadísticas globales de la red.
+Este módulo proporciona funciones para recopilar y mostrar estadísticas globales de la red..
 """
 import json
 

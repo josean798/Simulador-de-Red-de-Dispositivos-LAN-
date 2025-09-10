@@ -4,7 +4,7 @@ from Packet import Packet
 
 class Network:
     """
-    Orquesta el conjunto de dispositivos y conexiones en la red LAN simulada.
+    Orquesta el conjunto de dispositivos y conexiones en la red LAN simulada..
     Gestiona la topología, el envío y procesamiento de paquetes, y las estadísticas globales..
     """
 

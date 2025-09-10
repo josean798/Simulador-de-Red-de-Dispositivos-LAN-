@@ -5,7 +5,7 @@ from Stack import Stack
 
 class Device:
     """
-    Representa un dispositivo de red (router, switch, host, firewall).
+    Representa un dispositivo de red (router, switch, host, firewall)..
     """
 
     def __init__(self, name, device_type):

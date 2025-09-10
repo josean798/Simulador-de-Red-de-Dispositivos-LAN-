@@ -4,8 +4,8 @@ from Network import Network
 from Device import Device
 from Interface import Interface
 from Packet import Packet
-from network_statistics import NetworkStatistics
-from network_persistence import save_network_config, load_network_config
+from Network_statistics import NetworkStatistics
+from Network_persistence import save_network_config, load_network_config
 
 class CLI:
     """

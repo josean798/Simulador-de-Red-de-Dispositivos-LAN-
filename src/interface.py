@@ -3,7 +3,7 @@ from LinkedList import LinkedList
 
 class Interface:
     """
-    Representa una interfaz de red de un dispositivo (ej: g0/0, eth0).
+    Representa una interfaz de red de un dispositivo (ej: g0/0, eth0)..
     """
 
     def __init__(self, name):
