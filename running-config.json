@@ -1,4 +1,79 @@
 {
-  "devices": [],
-  "connections": []
+  "devices": [
+    {
+      "name": "r1",
+      "type": "router",
+      "status": "up",
+      "interfaces": [
+        {
+          "name": "eth0",
+          "ip": "192.168.1.1",
+          "status": "up"
+        }
+      ],
+      "routing_table": [
+        {
+          "prefix": "10.0.0.0",
+          "mask": "255.255.255.0",
+          "next_hop": "192.168.1.2",
+          "metric": 10
+        },
+        {
+          "prefix": "192.168.1.0",
+          "mask": "255.255.255.0",
+          "next_hop": "",
+          "metric": 1
+        },
+        {
+          "prefix": "192.168.1.0",
+          "mask": "255.255.255.0",
+          "next_hop": "",
+          "metric": 1
+        }
+      ],
+      "policies": [
+        [
+          "10.0.0.0",
+          "16",
+          "ttl-min",
+          3
+        ]
+      ]
+    },
+    {
+      "name": "r2",
+      "type": "router",
+      "status": "up",
+      "interfaces": [
+        {
+          "name": "eth0",
+          "ip": "192.168.1.2",
+          "status": "up"
+        }
+      ],
+      "routing_table": [
+        {
+          "prefix": "192.168.1.0",
+          "mask": "255.255.255.0",
+          "next_hop": "",
+          "metric": 1
+        },
+        {
+          "prefix": "192.168.1.0",
+          "mask": "255.255.255.0",
+          "next_hop": "",
+          "metric": 1
+        }
+      ],
+      "policies": []
+    }
+  ],
+  "connections": [
+    [
+      "r1",
+      "eth0",
+      "r2",
+      "eth0"
+    ]
+  ]
 }

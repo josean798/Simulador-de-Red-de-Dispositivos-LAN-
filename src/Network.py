@@ -63,7 +63,10 @@ class Network:
             iface2 = next((i for i in d2.interfaces if i.name == iface2_name), None)
             if iface1 and iface2:
                 iface1.connect(iface2)
+                self.connections.append((device1_name, iface1_name, device2_name, iface2_name))
                 return True
+        if hasattr(self, 'error_log'):
+            self.error_log.log_error("ConnectionError", f"No se pudo conectar {device1_name}:{iface1_name} a {device2_name}:{iface2_name}")
         return False
 
     def disconnect(self, device1_name, iface1_name, device2_name, iface2_name):
@@ -78,7 +81,12 @@ class Network:
             iface2 = next((i for i in d2.interfaces if i.name == iface2_name), None)
             if iface1 and iface2:
                 iface1.disconnect(iface2)
+                conn = (device1_name, iface1_name, device2_name, iface2_name)
+                if conn in self.connections:
+                    self.connections.remove(conn)
                 return True
+        if hasattr(self, 'error_log'):
+            self.error_log.log_error("DisconnectionError", f"No se pudo desconectar {device1_name}:{iface1_name} de {device2_name}:{iface2_name}")
         return False
 
     def list_devices(self):
@@ -135,11 +143,58 @@ class Network:
                                 self.hops_sum += len(packet.path)
                             elif packet.is_expired():
                                 self.total_packets_dropped += 1
+                                if hasattr(self, 'error_log'):
+                                    self.error_log.log_error("PacketExpired", f"TTL expirado para paquete {packet.source_ip} -> {packet.destination_ip}")
                             else:
-                                # Reenviar a vecinos
-                                for neighbor in iface.neighbors:
-                                    if neighbor.status == 'up':
-                                        neighbor.enqueue_packet(packet)
+                                # Aplicar políticas del Trie antes de lookup de ruta
+                                policy = device.get_policy(packet.destination_ip)
+                                if policy:
+                                    if 'block' in policy:
+                                        self.total_packets_dropped += 1
+                                        if hasattr(self, 'error_log'):
+                                            self.error_log.log_error("PacketBlocked", f"Paquete bloqueado por política: {packet.source_ip} -> {packet.destination_ip}")
+                                        continue
+                                    elif 'ttl-min' in policy:
+                                        if packet.ttl < policy['ttl-min']:
+                                            packet.ttl = policy['ttl-min']
+                                
+                                # Verificar TTL después de ajuste
+                                if packet.is_expired():
+                                    self.total_packets_dropped += 1
+                                    if hasattr(self, 'error_log'):
+                                        self.error_log.log_error("PacketExpiredAfterPolicy", f"TTL expirado después de política para paquete {packet.source_ip} -> {packet.destination_ip}")
+                                    continue
+                                
+                                # Usar tabla de rutas para reenviar
+                                route = device.lookup_route(packet.destination_ip)
+                                if route:
+                                    # Encontrar interfaz conectada al next_hop
+                                    next_iface = None
+                                    for iface in device.interfaces:
+                                        if iface.ip_address == route.next_hop:
+                                            next_iface = iface
+                                            break
+                                    if next_iface:
+                                        # Reenviar por esa interfaz
+                                        for neighbor in next_iface.neighbors:
+                                            if neighbor.status == 'up':
+                                                neighbor.enqueue_packet(packet)
+                                                # Aprender ARP
+                                                device.arp_table.insert(neighbor.ip_address, neighbor)
+                                    else:
+                                        # No se encontró interfaz, descartar
+                                        self.total_packets_dropped += 1
+                                        if hasattr(self, 'error_log'):
+                                            self.error_log.log_error("NoInterface", f"No se encontró interfaz para next-hop {route.next_hop} en {device.name}")
+                                else:
+                                    # No hay ruta, reenviar a vecinos directos
+                                    for iface in device.interfaces:
+                                        if iface.status == 'up':
+                                            for neighbor in iface.neighbors:
+                                                if neighbor.status == 'up':
+                                                    neighbor.enqueue_packet(packet)
+                                                    # Aprender ARP
+                                                    device.arp_table.insert(neighbor.ip_address, neighbor)
         # No retorna nada, solo procesa un paso de simulación
 
     def show_statistics(self):

@@ -19,7 +19,8 @@ class NetworkStatistics:
 
         for device in self.network.list_devices():
             device_activity[device.name] = 0
-            for packet in device.get_history():
+            sent, received = device.get_history()
+            for packet in sent + received:
                 total_sent += 1
                 delivered += 1 if packet.ttl > 0 else 0
                 dropped_ttl += 1 if packet.ttl == 0 else 0

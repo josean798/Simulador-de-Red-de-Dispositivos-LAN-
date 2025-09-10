@@ -17,7 +17,9 @@ def save_network_config(network, filename="running-config.json"):
             'name': device.name,
             'type': device.device_type,
             'status': device.status,
-            'interfaces': []
+            'interfaces': [],
+            'routing_table': device.get_routing_table_data(),
+            'policies': device.get_policy_data()
         }
         for iface in device.get_interfaces():
             iface_data = {
@@ -45,9 +47,13 @@ def load_network_config(filename):
             iface = Interface(iface_data['name'])
             if iface_data['ip']:
                 iface.set_ip(iface_data['ip'])
-            iface.set_status(iface_data['status'])
+            iface.status = iface_data['status']
             device.add_interface(iface)
+        for route_data in device_data.get('routing_table', []):
+            device.add_route(route_data['prefix'], route_data['mask'], route_data['next_hop'], route_data['metric'])
+        for policy_data in device_data.get('policies', []):
+            prefix, mask, policy_type, policy_value = policy_data
+            device.set_policy(prefix, mask, policy_type, policy_value)
     for conn in config['connections']:
         network.connect(*conn)
-    print(f"Configuración cargada desde {filename}")
     return network

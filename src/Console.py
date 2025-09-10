@@ -6,6 +6,9 @@ from Interface import Interface
 from Packet import Packet
 from Network_statistics import NetworkStatistics
 from Network_persistence import save_network_config, load_network_config
+from ErrorLog import ErrorLog
+from BTree import BTree
+from datetime import datetime
 
 class CLI:
     """
@@ -18,6 +21,9 @@ class CLI:
         self.network = Network()
         self.current_interface = None
         self.statistics = NetworkStatistics(self.network)
+        self.btree = BTree()
+        self.error_log = ErrorLog()
+        self.network.error_log = self.error_log
         self.init_commands()
     
     def init_commands(self):
@@ -40,6 +46,7 @@ class CLI:
                 'set_device_status': self._set_device_status,
                 'save': self._save_config,
                 'load': self._load_config,
+                'load_config': self._load_config_key,
                 'tick': self._process_tick,
                 'process': self._process_tick,
                 'exit': self._exit_privileged,
@@ -49,10 +56,16 @@ class CLI:
                 'remove_device': self._remove_device,
                 'add_interface': self._add_interface,
                 'console': self._console_device,
+                'save_snapshot': self._save_snapshot,
+                'load_config': self._load_config_key,
+                'show_snapshots': self._show_snapshots,
+                'btree_stats': self._btree_stats,
             },
             Mode.CONFIG: {
                 'hostname': self._set_hostname,
                 'interface': self._configure_interface,
+                'ip': self._ip_command,
+                'policy': self._policy_command,
                 'exit': self._exit_config,
                 'end': self._end_config,
                 'help': self._show_help
@@ -71,7 +84,14 @@ class CLI:
             'show history',
             'show interfaces',
             'show queue',
-            'show statistics'
+            'show statistics',
+            'show ip',
+            'show ip route',
+            'show route avl-stats',
+            'show ip route-tree',
+            'show snapshots',
+            'show ip prefix-tree',
+            'show error-log'
         ]
 
     def parse_command(self, command):
@@ -89,9 +109,18 @@ class CLI:
             cmd = 'configure'
         elif cmd == 'no' and len(parts) > 1 and parts[1].lower() == 'shutdown':
             cmd = 'no'
+        elif cmd == 'save' and len(parts) > 1 and parts[1].lower() == 'snapshot':
+            cmd = 'save_snapshot'
+            args = parts[2:]
+        elif cmd == 'load' and len(parts) > 1 and parts[1].lower() == 'config':
+            cmd = 'load_config'
+            args = parts[2:]
+        elif cmd == 'btree' and len(parts) > 1 and parts[1].lower() == 'stats':
+            cmd = 'btree_stats'
+            args = parts[2:]
         elif cmd == 'show' and len(parts) > 1:
-            show_cmd = ' '.join(parts[:2]).lower()
-            if show_cmd in self.SHOW_COMMANDS:
+            full_show = ' '.join(parts).lower()
+            if full_show in self.SHOW_COMMANDS:
                 cmd = 'show'
                 args = parts[1:]
 
@@ -99,8 +128,10 @@ class CLI:
             try:
                 self.commands[self.current_device.mode][cmd](args)
             except Exception as e:
+                self.error_log.log_error("CommandError", str(e), command)
                 print(f"Error ejecutando comando: {e}")
         else:
+            self.error_log.log_error("CommandNotFound", f"Comando '{cmd}' no reconocido", command)
             print(f"% Comando '{cmd}' no reconocido o no disponible en el modo actual")
 
     def get_prompt(self):
@@ -161,6 +192,7 @@ class CLI:
             self.current_interface = iface
             self.current_device.mode = Mode.CONFIG_IF
         else:
+            self.error_log.log_error("InterfaceNotFound", f"La interfaz {iface_name} no existe", f"interface {iface_name}")
             print(f"% La interfaz {iface_name} no existe")
         print(self.get_prompt(), end='')
 
@@ -178,6 +210,7 @@ class CLI:
             
         new_name = args[0]
         if self.network.get_device(new_name):
+            self.error_log.log_error("HostnameInUse", f"El nombre {new_name} ya está en uso", f"hostname {new_name}")
             print(f"% El nombre {new_name} ya está en uso")
         else:
             old_name = self.current_device.name
@@ -200,8 +233,10 @@ class CLI:
                 self.current_interface.set_ip(ip)
                 print(f"Interface {self.current_interface.name} configurada con IP {ip}")
             else:
+                self.error_log.log_error("InvalidIP", f"Dirección IP inválida: {ip}", f"ip address {ip}")
                 print("% Dirección IP inválida")
         else:
+            self.error_log.log_error("NoInterfaceSelected", "Ninguna interfaz seleccionada", f"ip address {ip}")
             print("% Ninguna interfaz seleccionada")
         print(self.get_prompt(), end='')
 
@@ -211,6 +246,23 @@ class CLI:
         if len(parts) != 4:
             return False
         return all(part.isdigit() and 0 <= int(part) <= 255 for part in parts)
+
+    def _validate_mask(self, mask):
+        """Valida formato de máscara de red"""
+        if mask.startswith('/'):
+            try:
+                length = int(mask[1:])
+                return 0 <= length <= 32
+            except ValueError:
+                return False
+        else:
+            parts = mask.split('.')
+            if len(parts) != 4:
+                return False
+            try:
+                return all(part.isdigit() and 0 <= int(part) <= 255 for part in parts)
+            except ValueError:
+                return False
 
     def _shutdown_interface(self, args):
         """Desactiva la interfaz actual"""
@@ -226,6 +278,105 @@ class CLI:
             print(f"Interface {self.current_interface.name} activada")
         print(self.get_prompt(), end='')
 
+    def _ip_command(self, args):
+        """Maneja comandos ip"""
+        if not args or args[0] != 'route':
+            print("Uso: ip route <add|del> <prefix> <mask> [via <next-hop>] [metric N]")
+            return
+        if len(args) < 4:
+            print("Uso: ip route <add|del> <prefix> <mask> [via <next-hop>] [metric N]")
+            return
+        action = args[1]
+        prefix = args[2]
+        mask = args[3]
+        next_hop = ""
+        metric = 1
+        if action == 'add':
+            if len(args) > 4:
+                if 'via' in args:
+                    idx = args.index('via')
+                    if idx + 1 < len(args):
+                        next_hop = args[idx + 1]
+                if 'metric' in args:
+                    idx = args.index('metric')
+                    if idx + 1 < len(args):
+                        try:
+                            metric = int(args[idx + 1])
+                        except ValueError:
+                            self.error_log.log_error("InvalidMetric", f"Métrica inválida: {args[idx + 1]}", f"ip route add {prefix} {mask} metric {args[idx + 1]}")
+                            print("Métrica inválida")
+                            return
+            self.current_device.add_route(prefix, mask, next_hop, metric)
+            print(f"Ruta añadida: {prefix}/{mask} via {next_hop} metric {metric}")
+        elif action == 'del':
+            self.current_device.del_route(prefix, mask)
+            print(f"Ruta eliminada: {prefix}/{mask}")
+        else:
+            self.error_log.log_error("InvalidAction", f"Acción inválida: {action}", f"ip route {action} {prefix} {mask}")
+            print("Acción inválida. Use 'add' o 'del'")
+        print(self.get_prompt(), end='')
+
+    def _policy_command(self, args):
+        """Maneja comandos policy"""
+        if not args:
+            print("Uso: policy <set|unset> <prefix> <mask> [tipo valor]")
+            return
+        action = args[0]
+        if action == 'set':
+            if len(args) < 4:
+                print("Uso: policy set <prefix> <mask> <tipo> [valor]")
+                return
+            prefix = args[1]
+            mask = args[2]
+            if not self._validate_ip(prefix):
+                self.error_log.log_error("InvalidIP", f"Prefijo IP inválido: {prefix}", f"policy set {prefix} {mask}")
+                print("% Prefijo IP inválido")
+                return
+            if not self._validate_mask(mask):
+                self.error_log.log_error("InvalidMask", f"Máscara inválida: {mask}", f"policy set {prefix} {mask}")
+                print("% Máscara inválida")
+                return
+            policy_type = args[3]
+            policy_value = args[4] if len(args) > 4 else None
+            if policy_type == 'block':
+                self.current_device.set_policy(prefix, mask, policy_type)
+                print(f"Política block aplicada a {prefix}/{mask}")
+            elif policy_type == 'ttl-min':
+                if policy_value is None:
+                    print("Uso: policy set <prefix> <mask> ttl-min <valor>")
+                    return
+                try:
+                    int(policy_value)
+                except ValueError:
+                    self.error_log.log_error("InvalidTTL", f"Valor de TTL inválido: {policy_value}", f"policy set {prefix} {mask} ttl-min {policy_value}")
+                    print("% Valor de TTL inválido")
+                    return
+                self.current_device.set_policy(prefix, mask, policy_type, int(policy_value))
+                print(f"Política ttl-min={policy_value} aplicada a {prefix}/{mask}")
+            else:
+                self.error_log.log_error("InvalidPolicyType", f"Tipo de política inválido: {policy_type}", f"policy set {prefix} {mask} {policy_type}")
+                print("Tipo de política inválido")
+        elif action == 'unset':
+            if len(args) < 3:
+                print("Uso: policy unset <prefix> <mask>")
+                return
+            prefix = args[1]
+            mask = args[2]
+            if not self._validate_ip(prefix):
+                self.error_log.log_error("InvalidIP", f"Prefijo IP inválido: {prefix}", f"policy unset {prefix} {mask}")
+                print("% Prefijo IP inválido")
+                return
+            if not self._validate_mask(mask):
+                self.error_log.log_error("InvalidMask", f"Máscara inválida: {mask}", f"policy unset {prefix} {mask}")
+                print("% Máscara inválida")
+                return
+            self.current_device.unset_policy(prefix, mask)
+            print(f"Política eliminada de {prefix}/{mask}")
+        else:
+            self.error_log.log_error("InvalidPolicyAction", f"Acción inválida: {action}", f"policy {action}")
+            print("Acción inválida. Use 'set' o 'unset'")
+        print(self.get_prompt(), end='')
+
     def _connect(self, args):
         """Conecta dos interfaces de dispositivos"""
         if len(args) != 3:
@@ -238,6 +389,7 @@ class CLI:
         if self.network.connect(dev1, iface1, dev2, iface2):
             print(f"Conexión establecida: {dev1}:{iface1} <-> {dev2}:{iface2}")
         else:
+            self.error_log.log_error("ConnectionError", f"No se pudo establecer la conexión: {dev1}:{iface1} <-> {dev2}:{iface2}", f"connect {iface1} {dev2} {iface2}")
             print("% No se pudo establecer la conexión. Verifique los nombres.")
         print(self.get_prompt(), end='')
 
@@ -253,6 +405,7 @@ class CLI:
         if self.network.disconnect(dev1, iface1, dev2, iface2):
             print(f"Conexión eliminada: {dev1}:{iface1} <-> {dev2}:{iface2}")
         else:
+            self.error_log.log_error("DisconnectionError", f"No se pudo eliminar la conexión: {dev1}:{iface1} <-> {dev2}:{iface2}", f"disconnect {iface1} {dev2} {iface2}")
             print("% No se pudo eliminar la conexión. Verifique los nombres.")
         print(self.get_prompt(), end='')
 
@@ -267,6 +420,7 @@ class CLI:
             if self.network.set_device_status(dev, 'up' if status == 'online' else 'down'):
                 print(f"Estado de {dev} cambiado a {status}")
             else:
+                self.error_log.log_error("DeviceNotFound", f"Dispositivo no encontrado: {dev}", f"set_device_status {dev} {status}")
                 print("% Dispositivo no encontrado")
         else:
             print("% Estado inválido. Use 'online' u 'offline'")
@@ -302,6 +456,12 @@ class CLI:
             print("  show interfaces - Muestra interfaces del dispositivo")
             print("  show queue - Muestra cola de paquetes pendientes")
             print("  show statistics - Muestra estadísticas de red")
+            print("  show ip route - Muestra tabla de rutas")
+            print("  show route avl-stats - Muestra estadísticas del AVL")
+            print("  show ip route-tree - Muestra árbol de rutas")
+            print("  show ip prefix-tree - Muestra árbol de prefijos")
+            print("  show error-log - Muestra registro de errores")
+            print("  show snapshots - Muestra snapshots indexados")
             return
             
         subcmd = args[0].lower()
@@ -313,6 +473,29 @@ class CLI:
             self._show_queue(args[1:])
         elif subcmd == 'statistics':
             self._show_statistics(args[1:])
+        elif subcmd == 'ip' and len(args) > 1 and args[1] == 'route':
+            self.current_device.show_routing_table()
+        elif subcmd == 'route' and len(args) > 1 and args[1] == 'avl-stats':
+            self.current_device.show_avl_stats()
+        elif subcmd == 'ip' and len(args) > 1 and args[1] == 'route-tree':
+            self.current_device.show_route_tree()
+        elif subcmd == 'ip' and len(args) > 1 and args[1] == 'prefix-tree':
+            self.current_device.policy_trie.print_tree()
+        elif subcmd == 'error-log':
+            n = int(args[1]) if len(args) > 1 and args[1].isdigit() else None
+            errors = self.error_log.get_errors(n)
+            if not errors:
+                print("No hay errores registrados")
+            else:
+                for error in errors:
+                    print(error)
+        elif subcmd == 'ip':
+            print("Comandos show ip disponibles:")
+            print("  show ip route - Muestra tabla de rutas")
+            print("  show ip route-tree - Muestra árbol de rutas")
+            print("  show ip prefix-tree - Muestra árbol de prefijos")
+        elif subcmd == 'snapshots':
+            self._show_snapshots(args[1:])
         else:
             print("% Comando show no reconocido")
         print(self.get_prompt(), end='')
@@ -407,6 +590,7 @@ class CLI:
                 pkt2 = Packet(source, dest, message, ttl)
                 receptor.add_received(pkt2)
         else:
+            self.error_log.log_error("SendError", f"No se encontró la interfaz con la IP de origen especificada: {source}", f"send {source} {dest} {message}")
             print("% No se encontró la interfaz con la IP de origen especificada")
         print(self.get_prompt(), end='')
 
@@ -434,6 +618,7 @@ class CLI:
         try:
             save_network_config(self.network, filename)
         except Exception as e:
+            self.error_log.log_error("SaveConfigError", f"Error guardando configuración: {e}", f"save {filename}")
             print(f"% Error guardando configuración: {e}")
         print(self.get_prompt(), end='')
 
@@ -473,6 +658,7 @@ class CLI:
                 self.current_device = devices[0]
             print(f"Configuración cargada desde {filename}")
         except Exception as e:
+            self.error_log.log_error("LoadConfigError", f"Error cargando configuración: {e}", f"load {filename}")
             print(f"% Error cargando configuración: {e}")
         print(self.get_prompt(), end='')
 
@@ -517,10 +703,12 @@ class CLI:
         name, dtype = args[0], args[1].lower()
         
         if dtype not in ['router', 'switch', 'host', 'firewall']:
+            self.error_log.log_error("InvalidDeviceType", f"Tipo de dispositivo inválido: {dtype}", f"add_device {name} {dtype}")
             print("% Tipo de dispositivo inválido")
             return
             
         if self.network.get_device(name):
+            self.error_log.log_error("DeviceExists", f"El dispositivo {name} ya existe", f"add_device {name} {dtype}")
             print(f"% El dispositivo {name} ya existe")
             return
             
@@ -539,6 +727,7 @@ class CLI:
         device = self.network.get_device(name)
         
         if not device:
+            self.error_log.log_error("DeviceNotFound", f"Dispositivo {name} no encontrado", f"remove_device {name}")
             print(f"% Dispositivo {name} no encontrado")
             return
             
@@ -547,6 +736,7 @@ class CLI:
                     if c[0] == name or c[2] == name]
         
         if connections:
+            self.error_log.log_error("DeviceHasConnections", f"El dispositivo {name} tiene conexiones activas", f"remove_device {name}")
             print("% Error: El dispositivo tiene conexiones activas")
             print("Desconéctelo primero con 'disconnect'")
             return
@@ -565,11 +755,13 @@ class CLI:
         device = self.network.get_device(dev_name)
         
         if not device:
+            self.error_log.log_error("DeviceNotFound", f"Dispositivo {dev_name} no encontrado", f"add_interface {dev_name} {iface_name}")
             print(f"% Dispositivo {dev_name} no encontrado")
             return
             
         # Verificar si la interfaz ya existe
         if any(iface.name == iface_name for iface in device.get_interfaces()):
+            self.error_log.log_error("InterfaceExists", f"La interfaz {iface_name} ya existe en {dev_name}", f"add_interface {dev_name} {iface_name}")
             print(f"% La interfaz {iface_name} ya existe en {dev_name}")
             return
             
@@ -593,6 +785,7 @@ class CLI:
         device = self.network.get_device(device_name)
         
         if not device:
+            self.error_log.log_error("DeviceNotFound", f"Dispositivo {device_name} no encontrado", f"console {device_name}")
             print(f"% Dispositivo {device_name} no encontrado")
             return
         # Guardar el modo actual antes de cambiar
@@ -602,6 +795,62 @@ class CLI:
         # Restaurar el modo en el nuevo dispositivo
         self.current_device.mode = current_mode
         print(f"Cambiado al dispositivo {device_name}")
+        print(self.get_prompt(), end='')
+
+    def _save_snapshot(self, args):
+        """Guarda un snapshot con clave"""
+        if len(args) != 1:
+            print("Uso: save snapshot <key>")
+            return
+        key = args[0]
+        # Generar nombre de archivo único
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        filename = f"snap_{timestamp}.json"
+        try:
+            save_network_config(self.network, filename)
+            self.btree.insert(key, filename)
+            print(f"[OK] snapshot {key} -> file: {filename} (indexed)")
+        except Exception as e:
+            self.error_log.log_error("SaveSnapshotError", f"Error guardando snapshot: {e}", f"save snapshot {key}")
+            print(f"% Error guardando snapshot: {e}")
+        print(self.get_prompt(), end='')
+
+    def _load_config_key(self, args):
+        """Carga configuración por clave"""
+        if len(args) != 1:
+            print("Uso: load config <key>")
+            return
+        key = args[0]
+        filename = self.btree.search(key)
+        if filename:
+            try:
+                self.network = load_network_config(filename)
+                self.statistics = NetworkStatistics(self.network)
+                devices = self.network.list_devices()
+                if devices:
+                    self.current_device = devices[0]
+                print(f"Configuración cargada desde {filename}")
+            except Exception as e:
+                self.error_log.log_error("LoadConfigKeyError", f"Error cargando configuración: {e}", f"load config {key}")
+                print(f"% Error cargando configuración: {e}")
+        else:
+            self.error_log.log_error("KeyNotFound", f"Clave {key} no encontrada en el índice", f"load config {key}")
+            print(f"% Clave {key} no encontrada en el índice")
+        print(self.get_prompt(), end='')
+
+    def _show_snapshots(self, args):
+        """Muestra snapshots en orden"""
+        snapshots = self.btree.get_snapshots()
+        if not snapshots:
+            print("No snapshots")
+        else:
+            for key, filename in snapshots:
+                print(f"{key} -> {filename}")
+
+    def _btree_stats(self, args):
+        """Muestra estadísticas del B-tree"""
+        stats = self.btree.get_stats()
+        print(f"order={stats['order']} height={stats['height']} nodes={stats['nodes']} splits={stats['splits']} merges={stats['merges']}")
         print(self.get_prompt(), end='')
 
 
